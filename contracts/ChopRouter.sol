@@ -5,41 +5,38 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract TokenSwap is ReentrancyGuard {
+import "hardhat/console.sol";
+
+contract ChopRouter is ReentrancyGuard {
     address public uniswapRouter;
 
     constructor(address _uniswapRouter) {
         uniswapRouter = _uniswapRouter;
     }
 
+    struct SwapParams {
+        address destination;
+        address destinationToken;
+        uint256 swapAmount;
+        uint256 minOutAmount;
+        address[] uniswapPath;
+    }
+
     // Function to swap tokens and distribute to multiple destinations
     function swapAndDistribute(
         address inTokenAddress,
         uint256 totalAmount,
-        address[] calldata destinations,
-        address[] calldata destinationTokens,
-        uint256[] calldata swapAmounts,
-        uint256[] calldata minOutAmounts,
-        address[][] calldata uniswapPaths
+        SwapParams[] memory swapParams
     ) external nonReentrant {
-        require(
-            destinations.length == destinationTokens.length &&
-                destinations.length == swapAmounts.length &&
-                destinations.length == minOutAmounts.length &&
-                destinations.length == uniswapPaths.length,
-            "Input length mismatch"
-        );
-
         // Ensure the total of swap amounts matches the input amount
-        uint256 totalSwapAmount = 0;
-        for (uint256 i = 0; i < swapAmounts.length; i++) {
-            totalSwapAmount += swapAmounts[i];
-        }
-        require(
-            totalSwapAmount == totalAmount,
-            "Swap amounts do not match total amount"
-        );
-
+        // uint256 totalSwapAmount = 0;
+        // for (uint256 i = 0; i < swapAmounts.length; i++) {
+        //     totalSwapAmount += swapAmounts[i];
+        // }
+        // require(
+        //     totalSwapAmount == totalAmount,
+        //     "Swap amounts do not match total amount"
+        // );
         // Transfer inToken from sender to contract
         IERC20(inTokenAddress).transferFrom(
             msg.sender,
@@ -47,33 +44,25 @@ contract TokenSwap is ReentrancyGuard {
             totalAmount
         );
         IERC20(inTokenAddress).approve(uniswapRouter, totalAmount);
-
-        uint256 aggregateAmountOut = 0;
-
-        for (uint256 i = 0; i < destinations.length; i++) {
+        // uint256 aggregateAmountOut = 0;
+        for (uint256 i = 0; i < swapParams.length; i++) {
+            SwapParams memory curParam = swapParams[i];
             uint256 tokenAmountOut = _swap(
-                inTokenAddress,
-                destinationTokens[i],
-                swapAmounts[i],
-                minOutAmounts[i],
-                uniswapPaths[i]
+                curParam.swapAmount,
+                curParam.minOutAmount,
+                curParam.uniswapPath
             );
 
-            require(
-                tokenAmountOut >= minOutAmounts[i],
-                "Output amount too low"
-            );
-            IERC20(destinationTokens[i]).transfer(
-                destinations[i],
+            IERC20(curParam.destinationToken).transfer(
+                curParam.destination,
                 tokenAmountOut
             );
-            aggregateAmountOut += tokenAmountOut;
+            // aggregateAmountOut += tokenAmountOut;
         }
-
-        require(
-            aggregateAmountOut >= totalAmount,
-            "Total output less than input"
-        );
+        // require(
+        //     aggregateAmountOut >= totalAmount,
+        //     "Total output less than input"
+        // );
     }
 
     // Internal function to swap tokens using Uniswap V2
@@ -82,11 +71,13 @@ contract TokenSwap is ReentrancyGuard {
         uint256 minAmountOut,
         address[] memory path
     ) internal returns (uint256) {
+        console.log("Swap");
         IUniswapV2Router02 router = IUniswapV2Router02(uniswapRouter);
 
         uint256[] memory amountsOut = router.swapExactTokensForTokens(
             amountIn,
-            minAmountOut, // User-defined minimum output amount
+            // minAmountOut, // User-defined minimum output amount
+            0,
             path,
             address(this),
             block.timestamp + 1200
